@@ -1,0 +1,169 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  Normal
+  Reviewer
+}
+
+// --- Auth models (unchanged) ---
+model User {
+  id            String          @id
+  name          String
+  email         String
+  emailVerified Boolean         @default(false)
+  image         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @default(now()) @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  report        ExpenseReport[]
+  role          UserRole        @default(Normal)
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@map("verification")
+}
+
+enum ExpenseReportStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model Merchant {
+  id             String   @id @default(cuid(2))
+  name           String
+  normalizedName String   @unique
+  address        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  receipts Receipt[]
+
+  @@unique([name])
+}
+
+model ExpenseReport {
+  id          String              @id @default(cuid(2))
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  status      ExpenseReportStatus @default(DRAFT)
+  receipts    Receipt[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @default(now()) @updatedAt
+
+  @@index([userId])
+}
+
+model Receipt {
+  id              String         @id @default(cuid(2))
+  expenseReportId String?
+  expenseReport   ExpenseReport? @relation(fields: [expenseReportId], references: [id], onDelete: Cascade)
+
+  merchantId String?
+  merchant   Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId String
+
+  pageCount     Int               @default(1)
+  date          DateTime?
+  currency      String?
+  tax           Decimal?          @db.Decimal(12, 2)
+  tip           Decimal?          @db.Decimal(12, 2)
+  paymentMethod String?
+  confidence    Float?
+  metadata      Json?
+  lineItems     ReceiptLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([expenseReportId])
+  @@index([merchantId])
+  @@index([date])
+}
+
+model ReceiptLineItem {
+  id        String  @id @default(cuid(2))
+  receiptId String
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  description String
+  sku         String?
+  quantity    Decimal @default("1.000") @db.Decimal(12, 3)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  currency    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([receiptId])
+}
+
+model Category {
+  id             String    @id @default(cuid(2))
+  name           String
+  normalizedName String    @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+  Receipt        Receipt[]
+}
